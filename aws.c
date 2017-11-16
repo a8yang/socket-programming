@@ -13,13 +13,17 @@
 #define AWS_TCP_PORT "25245"
 #define AWS_UDP_PORT "24245"
 #define SERVERA_PORT "21245"
+#define SERVERB_PORT "22245"
+#define SERVERC_PORT "23245"
 
 #define LOCALHOST "127.0.0.1"
 #define MAX_QUEUE 10
 #define MAX_DATA_SIZE 20
 
 void sendServerA(char* function, char* input);
-int createUDP(int *port);
+int createUDPListener(int *port);
+void createUDPSender(int *sockfd, struct addrinfo **addr, char *port);
+int sendUDP(int sockfd, struct addrinfo *addr, char payload[]);
 
 int main(void) {
 	int status, tcp_sockfd, child_sockfd;
@@ -117,7 +121,25 @@ int main(void) {
 
 			// create UDP port that backservers can talk to
 			int udp_port;
-			int udp_sockfd = createUDP(&udp_port);
+			int udp_sockfd = createUDPListener(&udp_port);
+
+			// create UDP ports to send data to backservers
+			int sockfd_a, sockfd_b, sockfd_c;
+			struct addrinfo *addr_a, *addr_b, *addr_c;
+			createUDPSender(&sockfd_a, &addr_a, SERVERA_PORT);
+			createUDPSender(&sockfd_b, &addr_b, SERVERB_PORT);
+			createUDPSender(&sockfd_c, &addr_c, SERVERC_PORT);
+
+			char *x = input;
+			sendUDP(sockfd_a, addr_a, x);
+
+			struct sockaddr from_addr;
+			socklen_t from_addrlen = sizeof from_addr;
+			char buf[MAX_DATA_SIZE];
+			if (recvfrom(udp_sockfd, buf, MAX_DATA_SIZE-1, 0, &from_addr, &from_addrlen) == -1) {
+				perror("error receiving from backserver");
+			}
+			printf("Received data from backserver: %s\n", buf);
 
 			exit(1);
 		}
@@ -125,13 +147,16 @@ int main(void) {
 		close(child_sockfd);
 	}
 
-	// sendServerA("LOG", "0.8");
+	// int sockfd_a;
+	// struct addrinfo *addr_a;
+	// createUDPSender(&sockfd_a, &addr_a, SERVERA_PORT);
+	// sendUDP(sockfd_a, addr_a, "0.8");
 
 	close(tcp_sockfd);
 	return 0;
 }
 
-void sendServerA(char* function, char* input) {
+void createUDPSender(int *sockfd, struct addrinfo **addr, char *port) {
 	// ====== Send to backserver A
 	int status;
 	int sockfd_a;
@@ -141,14 +166,13 @@ void sendServerA(char* function, char* input) {
 	hints_a.ai_family = AF_INET;
 	hints_a.ai_socktype = SOCK_DGRAM;
 
-	if ((status = getaddrinfo(LOCALHOST, SERVERA_PORT, &hints_a, &servinfo_a)) != 0) {
+	if ((status = getaddrinfo(LOCALHOST, port, &hints_a, &servinfo_a)) != 0) {
 		perror("getaddrinfo server A");
 		exit(1);
 	}
 
-	struct addrinfo *addr_a;
-	for (addr_a = servinfo_a; addr_a != NULL; addr_a = addr_a->ai_next) {
-		sockfd_a = socket(addr_a->ai_family, addr_a->ai_socktype, addr_a->ai_protocol);
+	for (*addr = servinfo_a; *addr != NULL; *addr = (*addr)->ai_next) {
+		sockfd_a = socket((*addr)->ai_family, (*addr)->ai_socktype, (*addr)->ai_protocol);
 		if (sockfd_a == -1) {
 			continue;
 		}
@@ -156,25 +180,24 @@ void sendServerA(char* function, char* input) {
 		break;
 	}
 
-	if (addr_a == NULL) {
+	if (*addr == NULL) {
 		perror("Failed to create socket for A");
 		exit(1);
 	}
 
-	int numbytes_a;
-	char payload[strlen(function) + strlen(input) + 2];
-	snprintf(payload, sizeof payload, "%s%s%s", function, " ", input);
-
-	if ((numbytes_a = sendto(sockfd_a, payload, strlen(payload), 0, addr_a->ai_addr, addr_a->ai_addrlen)) == -1) {
-		perror("Failed to send to A");
-		exit(1);
-	}
-
-	// Remove this when running for real
-	freeaddrinfo(servinfo_a);
+	*sockfd = sockfd_a;
 }
 
-int createUDP(int *port) {
+int sendUDP(int sockfd, struct addrinfo *addr, char payload[]) {
+	int numbytes;
+
+	if ((numbytes = sendto(sockfd, payload, strlen(payload), 0, addr->ai_addr, addr->ai_addrlen)) == -1) {
+		perror("sendUDP");
+	}
+	return numbytes;
+}
+
+int createUDPListener(int *port) {
 	struct addrinfo hints, *servinfo;
 	int status, sockfd;
 

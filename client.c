@@ -64,6 +64,8 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
+	printf("The client sent %s and %s to AWS", input, function);
+
 	close(sockfd);
 	return 0;
 
