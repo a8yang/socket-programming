@@ -12,6 +12,7 @@
 
 #define LOCALHOST "127.0.0.1"
 #define AWS_PORT "25245"
+#define MAXDATASIZE 20
 
 int main(int argc, char *argv[]) {
 	char *function, *input;
@@ -25,6 +26,7 @@ int main(int argc, char *argv[]) {
 	function = argv[1];
 	input = argv[2];
 
+	// lines 30-58 were mostly reused from Beej's guide
 	// fill in hints
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
@@ -55,16 +57,30 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
+	printf("The client is up and running\n");
+
+	// create string to send to AWS
 	int numbytes;
 	char payload[strlen(function) + strlen(input) + 2];
 	snprintf(payload, sizeof payload, "%s%s%s", function, " ", input);
 	
+	// send to AWS
 	if ((numbytes = send(sockfd, payload, strlen(payload), 0)) == -1) {
 		perror("Error sending data");
 		exit(1);
 	}
 
-	printf("The client sent %s and %s to AWS", input, function);
+	printf("The client sent %s and %s to AWS\n", input, function);
+
+	// Wait to receive result
+	char result[MAXDATASIZE];
+	if ((numbytes = recv(sockfd, result, MAXDATASIZE-1, 0)) == -1) {
+		perror("recv");
+		exit(1);
+	}
+	result[numbytes] = '\0';
+
+	printf("According to AWS %s on <%s>: <%s>\n", function, input, result);
 
 	close(sockfd);
 	return 0;

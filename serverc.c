@@ -9,8 +9,9 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
+#include <math.h>
 
-#define SERVERA_PORT "21245"
+#define SERVERC_PORT "23245"
 #define AWS_PORT "24245"
 #define LOCALHOST "127.0.0.1"
 #define MAXBUFLEN 20
@@ -27,7 +28,7 @@ int main(void) {
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_DGRAM;
 
-	if ((status = getaddrinfo(LOCALHOST, SERVERA_PORT, &hints, &servinfo)) != 0) {
+	if ((status = getaddrinfo(LOCALHOST, SERVERC_PORT, &hints, &servinfo)) != 0) {
 		perror("Error getaddrinfo: ");
 		exit(1);
 	}
@@ -53,7 +54,7 @@ int main(void) {
 		exit(1);
 	}
 
-	printf("The Server A is up and running using UDP on port %d\n", 
+	printf("The Server C is up and running using UDP on port %d\n", 
 		htons(((struct sockaddr_in*)addr->ai_addr)->sin_port));
 
 	freeaddrinfo(servinfo);
@@ -104,31 +105,31 @@ int main(void) {
 		}
 
 		buf[numbytes] = '\0';
-		printf("The Server A received input %s\n", buf);
+		printf("The Server C received input %s\n", buf);
 
-		// square input
+		// calculate 5th power of input
 		float x = atof(buf);
-		float x_sq = x*x;
+		float x_fifth = pow(x, 5.0);
 
 		// convert to string
-		char x_sq_string[20];
-		snprintf(x_sq_string, sizeof x_sq_string, "%s%f", "A ", x_sq);
+		char x_fif_string[20];
+		snprintf(x_fif_string, sizeof x_fif_string, "%s%f", "C ", x_fifth);
+		printf("%s", x_fif_string);
+		printf("The Server C calculated 5th power: %s\n", x_fif_string);
 
-		printf("The Server A calculated square: %s\n", x_sq_string);
-
-		// Send squared result to aws
+		// Send fifth power result to aws
 		if (sendto(
 			aws_sockfd, 
-			x_sq_string, 
-			strlen(x_sq_string), 
+			x_fif_string, 
+			strlen(x_fif_string), 
 			0, 
 			addr_aws->ai_addr, 
 			addr_aws->ai_addrlen
 		) == -1) {
-			perror("Error when sending square number");
+			perror("Error when sending fifth power of number");
 		}
 
-		printf("The Server A finished sending the output to AWS\n");
+		printf("The Server C finished sending the output to AWS\n");
 	}
 
 	close(sockfd);

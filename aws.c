@@ -26,12 +26,12 @@ void createUDPSender(int *sockfd, struct addrinfo **addr, char *port);
 int sendUDP(int sockfd, struct addrinfo *addr, char payload[]);
 
 int main(void) {
-	int status, tcp_sockfd, child_sockfd;
+	int status, tcp_sockfd;
 	struct addrinfo hints, *servinfo;
-	struct sockaddr_storage client_addr;
 
 	// ===== Listen for client =====
 
+	// lines 36-64 were mostly reused from Beej's guide
 	// fill in hints
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
@@ -67,7 +67,6 @@ int main(void) {
 
 	freeaddrinfo(servinfo);
 
-
 	// listen to client
 	if (listen(tcp_sockfd, MAX_QUEUE) == -1) {
 		perror("Error: failed to listen");
@@ -77,10 +76,13 @@ int main(void) {
 	printf("The AWS is up and running\n");
 
 	while (1) {
+		// structure of accept code was reused from Beej's guide
+
+		struct sockaddr_storage client_addr;
 		socklen_t addrlen = sizeof client_addr;
 
 		// Wait for incoming connection
-		child_sockfd = accept(tcp_sockfd, (struct sockaddr*)&client_addr, &addrlen);
+		int child_sockfd = accept(tcp_sockfd, (struct sockaddr*)&client_addr, &addrlen);
 		if (child_sockfd == -1) {
 			perror("Error in accept");
 			continue;
@@ -103,8 +105,6 @@ int main(void) {
 				exit(1);
 			}
 			data[numbytes] = '\0';
-
-			printf("received data: %s\n", data);
 
 			// parse function and input
 			char *saveptr;
@@ -129,33 +129,130 @@ int main(void) {
 			createUDPSender(&sockfd_a, &addr_a, SERVERA_PORT);
 			createUDPSender(&sockfd_b, &addr_b, SERVERB_PORT);
 			createUDPSender(&sockfd_c, &addr_c, SERVERC_PORT);
+			int port_a = htons(((struct sockaddr_in*)addr_a->ai_addr)->sin_port);
+			int port_b = htons(((struct sockaddr_in*)addr_b->ai_addr)->sin_port);
+			int port_c = htons(((struct sockaddr_in*)addr_c->ai_addr)->sin_port);
 
+
+			// send data to backservers
 			char *x = input;
 			sendUDP(sockfd_a, addr_a, x);
+			printf("The AWS sent <%s> to Backend-Server A\n", x);
+			sendUDP(sockfd_b, addr_b, x);
+			printf("The AWS sent <%s> to Backend-Server B\n", x);
+			sendUDP(sockfd_c, addr_c, x);
+			printf("The AWS sent <%s> to Backend-Server C\n", x);
 
-			struct sockaddr from_addr;
-			socklen_t from_addrlen = sizeof from_addr;
-			char buf[MAX_DATA_SIZE];
-			if (recvfrom(udp_sockfd, buf, MAX_DATA_SIZE-1, 0, &from_addr, &from_addrlen) == -1) {
-				perror("error receiving from backserver");
+			char *x_sq = NULL;
+			char *x_cb = NULL; 
+			char *x_fourth = NULL; 
+			char *x_fifth = NULL; 
+			char *x_sixth = NULL;
+
+			// Listen for data from backservers
+			while (x_sq == NULL || x_cb == NULL || x_fourth == NULL || x_fifth == NULL || x_sixth == NULL) {
+				struct sockaddr from_addr;
+				socklen_t from_addrlen = sizeof from_addr;
+				char buf[MAX_DATA_SIZE];
+				if (recvfrom(udp_sockfd, buf, MAX_DATA_SIZE-1, 0, &from_addr, &from_addrlen) == -1) {
+					perror("error receiving from backserver");
+				}
+
+				// parse data to figure out who sent it
+				char *saveptr2;
+				char str2[strlen(buf)];
+				strcpy(str2, buf);
+				strtok_r(str2, " ", &saveptr2);
+				char *server_name = str2;
+				char *num = saveptr2;
+
+				// figure out what power each number represents
+				int incoming_port;
+				if (strcmp(server_name, "A") == 0) {
+					if (x_sq == NULL) {
+						x_sq = malloc(strlen(num) + 1);
+						strcpy(x_sq, num);
+						sendUDP(sockfd_a, addr_a, x_sq);
+						printf("The AWS sent <%s> to Backend-Server A\n", x_sq);
+						sendUDP(sockfd_b, addr_b, x_sq);
+						printf("The AWS sent <%s> to Backend-Server B\n", x_sq);
+					} else {
+						x_fourth = malloc(strlen(num) + 1);
+						strcpy(x_fourth, num);
+					}
+
+					incoming_port = port_a;
+				} else if (strcmp(server_name, "B") == 0) {
+					if (x_cb == NULL) {
+						x_cb = malloc(strlen(num) + 1);
+						strcpy(x_cb, num);
+					} else {
+						x_sixth = malloc(strlen(num) + 1);
+						strcpy(x_sixth, num);
+					}
+
+					incoming_port = port_b;
+				} else if (strcmp(server_name, "C") == 0) {
+					if (x_fifth == NULL) {
+						x_fifth = malloc(strlen(num) + 1);
+						strcpy(x_fifth, num);
+					}
+
+					incoming_port = port_c;
+				} else {
+					incoming_port = 0;
+				}
+
+				printf("The AWS received <%s> Backend-Server %s using UDP over port <%d>\n",
+					num,
+					server_name,
+					incoming_port
+				);
 			}
-			printf("Received data from backserver: %s\n", buf);
 
+			printf("Values of powers received by AWS: <%s, %s, %s, %s, %s, %s>\n",
+				x, x_sq, x_cb, x_fourth, x_fifth, x_sixth	
+			);
+
+			// convert values to floats for calculations
+			float f_x = atof(x);
+			float f_x_sq = atof(x_sq);
+			float f_x_cb = atof(x_cb);
+			float f_x_fourth = atof(x_fourth);
+			float f_x_fifth = atof(x_fifth);
+			float f_x_sixth = atof(x_sixth);
+			float result;
+
+			// Do Taylor Series calculations
+			if (strcmp(function, "DIV") == 0) {
+				result = 1 + f_x + f_x_sq + f_x_cb + f_x_fourth + f_x_fifth + f_x_sixth;
+			} else if (strcmp(function, "LOG") == 0) {
+				result = -1*f_x - f_x_sq/2 - f_x_cb/3 - f_x_fourth/4 - f_x_fifth/5 - f_x_sixth/6;
+			}
+			char sresult[20];
+			snprintf(sresult, sizeof sresult, "%f", result);
+
+			printf("AWS calculated %s on <%s>: <%s>\n", function, x, sresult);
+
+			// send result to client
+			if (send(child_sockfd, sresult, strlen(sresult), 0) == -1) {
+				perror("unable to send result to client");
+				exit(1);
+			}
+			printf("The AWS sent <%s> to client.\n", sresult);
+
+			// exit child
 			exit(1);
 		}
 
 		close(child_sockfd);
 	}
 
-	// int sockfd_a;
-	// struct addrinfo *addr_a;
-	// createUDPSender(&sockfd_a, &addr_a, SERVERA_PORT);
-	// sendUDP(sockfd_a, addr_a, "0.8");
-
 	close(tcp_sockfd);
 	return 0;
 }
 
+// Almost whole function reused from Beej's
 void createUDPSender(int *sockfd, struct addrinfo **addr, char *port) {
 	// ====== Send to backserver A
 	int status;
@@ -197,6 +294,7 @@ int sendUDP(int sockfd, struct addrinfo *addr, char payload[]) {
 	return numbytes;
 }
 
+// Reused code from Beej's
 int createUDPListener(int *port) {
 	struct addrinfo hints, *servinfo;
 	int status, sockfd;
